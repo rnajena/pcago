@@ -7,14 +7,16 @@ library(shiny)
 source("uiHelper.R")
 source("helpers.R")
 source("readcounts.R")
+source("defaultParameters.R")
+source("environment.R")
 
 readCountPreprocessingUI <- function(id) {
   
   ns <- NS(id)
   
   return(tagList(
-    checkboxInput(ns("preprocessing.transpose"), "Transpose table", value = F),
-    checkboxInput(ns("preprocessing.zero"), "Remove genes with zero readcounts", value = T)
+    checkboxInput(ns("preprocessing.transpose"), "Transpose table", value = default.data.preprocessing.transpose),
+    checkboxInput(ns("preprocessing.zero"), "Remove genes with zero readcounts", value = default.data.preprocessing.removezero)
   ))
 }
 
@@ -40,8 +42,8 @@ readCountPreprocessingData_ <- function(input,
     }
     
     # Prevent too many samples
-    if(ncol(dataset$readcounts.preprocessed) > 100) {
-      showNotification("There are over 100 samples! I won't calculate with that! Maybe you need to transpose your data?", type = "error")
+    if(ncol(dataset$readcounts.preprocessed) > readcounts.maxsamples) {
+      showNotification(paste("There are only up to", readcounts.maxsamples, "samples supported! If your data stores the samples row-wise, transpose the read count data."), type = "error")
       dataset()$readcounts.preprocessed <- NULL
       return(dataset)
     }

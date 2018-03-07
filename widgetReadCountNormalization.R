@@ -6,6 +6,7 @@ library(DT)
 library(shiny)
 source("uiHelper.R")
 source("helpers.R")
+source("defaultParameters.R")
 
 readCountNormalizationUI <- function(id) {
   
@@ -16,7 +17,8 @@ readCountNormalizationUI <- function(id) {
                  helpIconText("Apply read count normalization", 
                               "If you already have normalized read counts, set this to 'None'.",
                               "Read count normalization"),
-                 choices = supportedReadcountNormalizationTypes),
+                 choices = supportedReadcountNormalizationTypes,
+                 selected = default.data.normalization),
     conditionalPanel(conditionalPanel.equals(ns("normalization"), "'tpm'"),
                      checkboxInput(ns("normalization.tpm.effectivelength"), "Use effective fragment length", value = T),
                      checkboxInput(ns("normalization.tpm.exonlength"), "Use feature exon length", value = T)),
@@ -110,11 +112,6 @@ readCountNormalizationData_ <- function(input,
   # If the user clicks on "Calculate", let DESeq calculate the conditions
   observeEvent(input$normalization.deseq2.submit, {
     
-    shinyjs::disable("normalization.deseq2.submit")
-    on.exit({ 
-      shinyjs::enable("normalization.deseq2.submit")
-    })
-    
     if(!sampleAnnotationHasConditions(sample.annotation())) {
       showNotification("Sample annotation has no conditions!", type = "error", duration = NULL)
       return()
@@ -127,24 +124,43 @@ readCountNormalizationData_ <- function(input,
       showNotification("No conditions selected!", type = "error", duration = NULL)
       return()
     }
+  
+    shinyjs::disable("normalization.deseq2.submit")
+    progress <- progressNotification("Building DESeq2 data. This will take some time ...")
     
-    # This method uses soft-validate and the error is lost if not in a required path of the reaction graph
-    # Use try-catch to get this error
-    tryCatch({
+    parallel.expression <- function() {
+      tryCatch({
+
+          transform <- "none"
+
+          if(input$normalization.deseq2.rlog) {
+            transform <- "rlog"
+          }
+
+          return(applyReadcountNormalization.DESeq2(readcounts = readcounts(),
+                                                    transform = transform,
+                                                    sample.annotation = sample.annotation(),
+                                                    selected.conditions = input$normalization.deseq2.conditions))
+          },
+        error = function(e){
+          showNotification(paste(e), type = "error", duration = NULL)
+        })
       
-      transform <- "none"
+      return(NULL)
+    }
+    
+    withParallel(session, input, expr = parallel.expression(),
+    exprsuccess = function(result) {
       
-      if(input$normalization.deseq2.rlog) {
-        transform <- "rlog"
+      if(!is.null(result)) {
+        
+        stored.values$readcounts.normalized.cache <-result
       }
       
-      stored.values$readcounts.normalized.cache <- applyReadcountNormalization.DESeq2(readcounts = readcounts(),
-                                                                                      transform = transform,
-                                                                                      sample.annotation = sample.annotation(),
-                                                                                      selected.conditions = input$normalization.deseq2.conditions) 
-      },
-    error = function(e){
-      showNotification(paste(e), type = "error", duration = NULL)
+    },
+    exprfinally = function() {
+      shinyjs::enable("normalization.deseq2.submit")
+      removeNotification(progress)
     })
     
   })

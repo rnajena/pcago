@@ -7,7 +7,7 @@ library(shinyBS)
 
 source("uiHelper.R")
 source("widgetInPlaceHelp.R")
-source("widgetFilterSelection.R")
+source("widgetGeneAnnotationKeywordFilter.R")
 source("widgetVisualsEditor.R")
 source("widgetGeneralPlotSettings.R")
 source("widgetGeneAnnotationImporter.R")
@@ -25,6 +25,8 @@ source("plotGeneVarianceRangePlot.R")
 source("plotAgglomerativeClusteringPlot.R")
 source("widgetRelevantGenes.R")
 source("widgetReadCountPostprocessing.R")
+source("defaultParameters.R")
+source("plotLoadingsPlot.R")
 
 #' Creates UI definition for the "data" sidebar
 #' This sidebar allows the user to upload necessary data and transform them for later processing
@@ -67,9 +69,9 @@ uiPCASidebarData <- function() {
 #' @examples
 uiPCASidebarFilterGenes <- function() {
   return(bsCollapse(
-    bsCollapsePanel(optionalDataText("by annotation"),
+    bsCollapsePanel(optionalDataText("by gene annotation"),
                     value = "pca.filter.bygenes",
-                    filterSelectionInput("pca.pca.genes.set", helpIconText("Limit set of genes", includeText("helptooltips/pca-pca-gene-set.md"))),
+                    geneAnnotationKeywordFilterInput("pca.pca.genes.set", helpIconText("Limit set of genes", includeText("helptooltips/pca-pca-gene-set.md"))),
                     hDivider(),
                     textOutput("pca.pca.genes.set.count")),
     bsCollapsePanel(optionalDataText("by gene variance"),
@@ -102,16 +104,17 @@ uiPCASidebarPCA <- function() {
                     value = "pca.pca.dataprocessing",
                     checkboxInput("pca.pca.settings.center", 
                                   helpIconText("Center data", includeMarkdown("helptooltips/pca-pca-settings-center.md")), 
-                                  value = T),
+                                  value = default.pca.settings.centering),
                     checkboxInput("pca.pca.settings.scale", 
                                   helpIconText("Scale data", includeMarkdown("helptooltips/pca-pca-settings-scale.md")), 
-                                  value = F)
+                                  value = default.pca.settings.scaling)
                    ),
     bsCollapsePanel(optionalDataText("Output transformations"),
                     value = "pca.pca.outputtransformations",
                     radioButtons("pca.pca.settings.relative", 
                                  helpIconText("Relative sample positions", includeMarkdown("helptooltips/pca-pca-settings-relative.md")), 
-                                 choices = c("None" = "none", "Per dimension" = "dimension", "Global" = "global")))
+                                 choices = c("None" = "none", "Per dimension" = "dimension", "Global" = "global"),
+                                 selected = default.pca.settings.relative))
   ))
   
 }
@@ -141,6 +144,8 @@ uiPCASidebarPlot <- function() {
     # Gene variances plot (filtered genes)
     conditionalPanel("input['pca.nav'] == 'genes.variances.filtered'", plotGeneVariancePlotSettingsUI("genes.variances.filtered.plot")),
     # PCA PC variances
-    conditionalPanel("input['pca.nav'] == 'pca.pc.importance'", plotPCAVariancePlotSettingsUI("pca.variance.plot"))
+    conditionalPanel("input['pca.nav'] == 'pca.pc.importance'", plotPCAVariancePlotSettingsUI("pca.variance.plot")),
+    # PCA PC loadings
+    conditionalPanel("input['pca.nav'] == 'pca.pc.pc'", plotLoadingsPlotSettingsUI("pca.loadings.plot"))
   ))
 }

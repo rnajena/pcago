@@ -46,6 +46,7 @@ source("plotGeneVarianceRangePlot.R")
 source("plotAgglomerativeClusteringPlot.R")
 source("processingReports.R")
 source("classDataSet.R")
+source("plotLoadingsPlot.R")
 
 options(shiny.maxRequestSize=30*1024^2) 
 
@@ -75,6 +76,7 @@ shinyServer(function(input, output, session) {
                               export.plot.venn.conditions = NULL,
                               export.plot.pca.sampleplot = NULL,
                               export.plot.pca.variance = NULL,
+                              export.plot.pca.loadings = NULL,
                               export.plot.variances.readcounts.processed = NULL,
                               export.plot.variances.readcounts.filtered = NULL,
                               export.count = 0)
@@ -147,14 +149,23 @@ shinyServer(function(input, output, session) {
   
   # Obtain the list of genes the user wants to use
   # The filtered read counts just intersects the list of genes returned by each filter
-  dataset.filtered <- serverFilterReadcountsByAnnotation(dataset.postprocessed)
-  genes.filtered <- reactive({
-    validate(need(dataset.filtered(), "No filtered read counts available!"))
-    return(dataset.filtered()$readcounts.filtered.parameters.genes)
+  dataset.filtered.keywords <- serverFilterReadcountsByAnnotationKeywords(dataset.postprocessed)
+  
+  genes.filtered.keywords <- reactive({
+    validate(need(dataset.filtered.keywords(), "No filtered read counts available!"))
+    return(dataset.filtered()$readcounts.filtered.keywords.parameters.genes)
   })
+  
   readcounts.filtered <- reactive({
     validate(need(dataset.filtered(), "No filtered read counts available!"))
     return(dataset.filtered()$readcounts.filtered)
+  })
+  
+  # Final filtered data set (just link it together nicely)
+  dataset.filtered <- reactive({
+    dataset <- dataset.filtered.keywords()
+    dataset$readcounts.filtered <- dataset$readcounts.filtered.keywords
+    return(dataset)
   })
   
   # Annotate gene variances
@@ -185,7 +196,7 @@ shinyServer(function(input, output, session) {
                                              value.max = reactive({ nrow(readcounts.filtered()) }),
                                              value.default = reactive({ nrow(readcounts.filtered()) }))
   
-  dataset.top.variant <- serverFilterReadCountsByVariance(dataset.variances, animation.top.variant = animation.top.variant)
+  dataset.top.variant <- serverFilterReadCountsByVariance(dataset.variances, animation.top.variant = animation.top.variant, input = input)
   readcounts.top.variant <- reactive({
     validate(need(dataset.top.variant(), "No top variant read counts available!")) 
     return(dataset.top.variant()$readcounts.top.variant)
@@ -262,6 +273,13 @@ shinyServer(function(input, output, session) {
   
   xauto.export.plot.pca.variance <- plotPCAVariancePlot("pca.variance.plot", pca, xauto = reactive({ xautovars$export.plot.pca.variance }))
   
+  xauto.export.plot.pca.loadings <- plotLoadingsPlot("pca.loadings.plot",
+                                                   dataset = dataset.pca,
+                                                   pca.center = reactive({input$pca.pca.settings.center}),
+                                                   pca.scale = reactive({input$pca.pca.settings.scale}),
+                                                   pca.relative = reactive({input$pca.pca.settings.relative}),
+                                                   xauto = reactive({ xautovars$export.plot.pca.loadings }))
+  
   xauto.export.plot.clustering.readcounts.pca.transformed <- plotAgglomerativeClusteringPlot("pca.transformed.hclust.plot", 
                                   conditions, 
                                   reactive({ t(pca()$transformed) }),
@@ -304,6 +322,7 @@ shinyServer(function(input, output, session) {
     xauto.export.plot.pca.sampleplot,
     xauto.export.plot.variances.readcounts.processed,
     xauto.export.plot.variances.readcounts.filtered,
-    xauto.export.plot.pca.variance
+    xauto.export.plot.pca.variance,
+    xauto.export.plot.pca.loadings
   ))
 })

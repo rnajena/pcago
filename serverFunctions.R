@@ -69,7 +69,7 @@ serverAutoNavigation <- function(input, session) {
   })
 }
 
-#' Fills PCAGO with some sample data
+#' Fills PCAGO with some example data
 #'
 #' @param variables
 #'
@@ -184,6 +184,7 @@ serverQuickSave <- function(input, output, dataset.pca, xautovars, export.target
   xautovars$export.plot.variances.readcounts.processed <- list(filename = paste0(export.directory, "/variances_readcounts_processed.svg"), format = "svg")
   xautovars$export.plot.variances.readcounts.filtered <- list(filename = paste0(export.directory, "/variances_readcounts_filtered.svg"), format = "svg")
   xautovars$export.plot.pca.variance <- list(filename = paste0(export.directory, "/pca_variances.svg"), format = "svg")
+  xautovars$export.plot.pca.loadings <- list(filename = paste0(export.directory, "/pca_loadings.svg"), format = "svg")
   
   for(target in export.targets) {
     observeEvent(target(), {
@@ -224,6 +225,7 @@ serverQuickSave <- function(input, output, dataset.pca, xautovars, export.target
       xautovars$export.plot.variances.readcounts.processed <- NULL
       xautovars$export.plot.variances.readcounts.filtered <- NULL
       xautovars$export.plot.pca.variance <- NULL
+      xautovars$export.plot.pca.loadings <- NULL
       
       # Reset notification
       shinyjs::enable("quickio.save")
@@ -268,7 +270,7 @@ serverQuickIO <- function(input, output, session, xautovars, dataset.preprocesse
     }
     else {
       showModal(modalDialog(
-        "Do you really want to load sample data?",
+        "Do you really want to load example data?",
         footer = tagList(
           modalButton("No"),
           actionButton("quickio.load.yes", "Yes")
@@ -311,7 +313,7 @@ serverReactiveNavigation <- function(session, observed, target.nav) {
 #' @export
 #'
 #' @examples
-serverFilterReadcountsByAnnotation <- function(dataset) {
+serverFilterReadcountsByAnnotationKeywords <- function(dataset) {
   
   readcounts.processed <- reactive({ 
     validate(need(dataset(), "[Gene filtering] No readcounts to process!"))
@@ -323,7 +325,7 @@ serverFilterReadcountsByAnnotation <- function(dataset) {
   })
   
   # Get the list of genes we want
-  genes.filtered <- (filterSelectionValues("pca.pca.genes.set",  reactive({
+  genes.filtered <- (geneAnnotationKeywordFilterValues("pca.pca.genes.set",  reactive({
     
     validate(need(readcounts.processed(), "[Gene filtering] No readcounts to process!"),
              need(gene.annotation(), "[Gene filtering] No gene annotation available!"))
@@ -344,9 +346,9 @@ serverFilterReadcountsByAnnotation <- function(dataset) {
       }
     }
     {
-      unused.genes <- setdiff(all.genes, (annotation@gene.go.terms$get_genes()))
-      gene.criteria[["Associated GO terms"]] <- annotation@gene.go.terms$data
-      
+      unused.genes <- setdiff(all.genes, (annotation@gene.go.ids$get_genes()))
+      gene.criteria[["Associated GO terms"]] <- annotation@gene.go.ids$data
+
       if(length(unused.genes) > 0) {
         gene.criteria[["Associated GO terms"]][["No data"]] <- unused.genes
       }
@@ -386,8 +388,8 @@ serverFilterReadcountsByAnnotation <- function(dataset) {
     keep.readcounts <- readcounts.processed()[keep.genes,]
     
     dataset <- dataset()
-    dataset$readcounts.filtered.parameters.genes <- genes.filtered()
-    dataset$readcounts.filtered <- keep.readcounts
+    dataset$readcounts.filtered.keywords.parameters.genes <- genes.filtered()
+    dataset$readcounts.filtered.keywords <- keep.readcounts
     
     return(dataset)
   }))
@@ -401,7 +403,7 @@ serverFilterReadcountsByAnnotation <- function(dataset) {
 #' @export
 #'
 #' @examples
-serverFilterReadCountsByVariance <- function(dataset, animation.top.variant) {
+serverFilterReadCountsByVariance <- function(dataset, input, animation.top.variant) {
   
   readcounts.filtered <- reactive({
     validate(need(dataset(), "No filtered read counts available!"))

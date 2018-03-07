@@ -8,6 +8,7 @@ library(shinyBS)
 library(shinyjs)
 source("uiHelper.R")
 source("classImporterEntry.R")
+source("helpers.R")
 
 #' Creates a generic import widget UI
 #'
@@ -39,7 +40,7 @@ genericImporterInput <- function(id,
     conditionalPanel(paste(conditionalPanel.equals(ns("source"), "'manual'"), "||", conditionalPanel.equals(ns("source"), "'upload'")), 
                      selectInput(ns("importer"), "Importer", c())),
     conditionalPanel(conditionalPanel.equals(ns("source"), "'sample'"), 
-                     selectInput(ns("sample"), "Sample data", c())),
+                     selectInput(ns("sample"), "Example data", c())),
     conditionalPanel(conditionalPanel.equals(ns("source"), "'generate'"), 
                      selectInput(ns("generator"), "Generator", c())),
     subSubBox(uiOutput(ns("parameter.slot1")),
@@ -212,7 +213,9 @@ genericImporterData_ <- function(input,
                                  exprsample, 
                                  exprgenerator,
                                  exprintegrate = NULL,
-                                 xauto = NULL) {
+                                 xauto = NULL,
+                                 parallel = F,
+                                 parallel.message = "Currently importing the data. Please wait.") {
   
   if(!is.reactive(importers) || !is.reactive(samples) || !is.reactive(generators)) {
     stop("Invalid arguments!")
@@ -243,7 +246,7 @@ genericImporterData_ <- function(input,
     
     # Update generator list
     if(length(samples()) > 0) {
-      sources <- c(sources, "sample data" = "sample")
+      sources <- c(sources, "example data" = "sample")
       
       choices <- lapply(samples(), function(x) { x@name })
       names(choices) <- lapply(samples(), function(x) { x@label })
@@ -362,12 +365,12 @@ genericImporterData_ <- function(input,
         
         if(!is.null(data)) {
           
-          addData(data, paste0("Sample: ", sample))
+          addData(data, paste0("Example: ", sample))
           
-          showNotification(paste("Loaded sample", sample), type = "message")
+          showNotification(paste("Loaded example", sample), type = "message")
         } 
         else {
-          showNotification("Error while importing sample!", type = "error")
+          showNotification("Error while importing example!", type = "error")
         }
       }
       else {
@@ -406,119 +409,143 @@ genericImporterData_ <- function(input,
       variables$data.labels <- list()
     }
     
+    expr.import.data <- NULL
+    
     if(input$source == "upload") {
-      inFile <- input$fileinput
-      importer <- input$importer
       
-      if(!is.null(inFile)) {
-        con <- file(inFile$datapath, "r")
-        data <- tryCatch({exprimport(con, importer, parameters)}, 
-                         error = function(e){
-                           showNotification(paste(e), type = "error", duration = NULL)
-                           return(NULL)
+      expr.import.data <- function() {
+        inFile <- input$fileinput
+        importer <- input$importer
+        
+        if(!is.null(inFile)) {
+          con <- file(inFile$datapath, "r")
+          data <- tryCatch({exprimport(con, importer, parameters)}, 
+                           error = function(e){
+                             showNotification(paste(e), type = "error", duration = NULL)
+                             return(NULL)
                            }, 
-                         warning = function(w)
+                           warning = function(w)
                            {
-                           showNotification(paste(w), type = "warning", duration = NULL)
-                           return(NULL)
+                             showNotification(paste(w), type = "warning", duration = NULL)
+                             return(NULL)
                            })
-        close(con)
-        
-        if(!is.null(data)) {
+          close(con)
           
-          addData(data, paste0("Upload: ", basename(inFile$name)))
+          if(!is.null(data)) {
+            return(list(data = data, description = paste0("Upload: ", basename(inFile$name))))
+          } 
+          else {
+            return(NULL)
+          }
           
-          showNotification("Data has been successfully imported.", type = "message")
-        } 
-        else {
-          showNotification("Error while importing the data", type = "error")
         }
-        
-      }
-      else
-      {
-        showNotification("Error while importing the data: No file uploaded!", type = "error")
-        return(NULL)
+        else
+        {
+          showNotification("Error while importing the data: No file uploaded!", type = "error")
+          return(NULL)
+        }
       }
         
     }
     else if(input$source == "manual") {
-      importer <- input$importer
-      con <- textConnection(input$input)
-      data <- tryCatch({exprimport(con, importer, parameters)}, 
-                       error = function(e){
-                         showNotification(paste(e), type = "error", duration = NULL)
-                         return(NULL)
-                       }, 
-                       warning = function(w)
-                       {
-                         showNotification(paste(w), type = "warning", duration = NULL)
-                         return(NULL)
-                       })
-      close(con)
       
-      if(!is.null(data)) {
-        
-        addData(data, "Manual input")
-        
-        showNotification("Data has been successfully imported.", type = "message")
-      } 
-      else {
-        showNotification("Error while importing the data", type = "error")
+      expr.import.data <- function() {
+       
+          importer <- input$importer
+          con <- textConnection(input$input)
+          data <- tryCatch({exprimport(con, importer, parameters)}, 
+                           error = function(e){
+                             showNotification(paste(e), type = "error", duration = NULL)
+                             return(NULL)
+                           }, 
+                           warning = function(w)
+                           {
+                             showNotification(paste(w), type = "warning", duration = NULL)
+                             return(NULL)
+                           })
+          close(con)
+          
+          if(!is.null(data)) {
+            return(list(data = data, description = "Manual input"))
+          } 
+          else {
+            return(NULL)
+          }
       }
       
-     
     }
     else if(input$source == "sample") {
       
-      sample <- input$sample
-      
-      data <- tryCatch({exprsample(sample, parameters)}, 
-                       error = function(e){
-                         showNotification(paste(e), type = "error", duration = NULL)
-                         return(NULL)
-                       }, 
-                       warning = function(w)
-                       {
-                         showNotification(paste(w), type = "warning", duration = NULL)
-                         return(NULL)
-                       })
-      
-      if(!is.null(data)) {
+      expr.import.data <- function() {
+        sample <- input$sample
         
-        addData(data, paste0("Sample: ", sample))
-        
-        showNotification(paste("Loaded sample", sample), type = "message")
-      } 
-      else {
-        showNotification("Error while importing sample!", type = "error")
+        data <- tryCatch({exprsample(sample, parameters)}, 
+                         error = function(e){
+                           showNotification(paste(e), type = "error", duration = NULL)
+                           return(NULL)
+                         }, 
+                         warning = function(w)
+                         {
+                           showNotification(paste(w), type = "warning", duration = NULL)
+                           return(NULL)
+                         })
+        if(!is.null(data)) {
+          return(list(data = data, description = paste("Example:", sample)))
+        } 
+        else {
+          return(NULL)
+        }
       }
       
     }
     else if(input$source == "generate") {
       
-      generator <- input$generator
-      
-      data <- tryCatch({exprgenerator(generator, parameters)}, 
-                       error = function(e){
-                         showNotification(paste(e), type = "error", duration = NULL)
-                         return(NULL)
-                       }, 
-                       warning = function(w)
-                       {
-                         showNotification(paste(w), type = "warning", duration = NULL)
-                         return(NULL)
-                       })
-      
-      if(!is.null(data)) {
+      expr.import.data <- function() {
+        generator <- input$generator
         
-        addData(data, paste0("Generated data: ", generator))
-        
-        showNotification(paste("Generated data using", generator), type = "message")
-      } 
-      else {
-        showNotification("Error while importing sample!", type = "error")
+        data <- tryCatch({exprgenerator(generator, parameters)}, 
+                         error = function(e){
+                           showNotification(paste(e), type = "error", duration = NULL)
+                           return(NULL)
+                         }, 
+                         warning = function(w)
+                         {
+                           showNotification(paste(w), type = "warning", duration = NULL)
+                           return(NULL)
+                         })
+        if(!is.null(data)) {
+          return(list(data = data, description = paste("Generated:", generator)))
+        } 
+        else {
+          return(NULL)
+        }
       }
+      
+    }
+    
+    # Parallel or non-parallel
+    if(!parallel) {
+      result <- expr.import.data()
+      if(!is.null(result)) {
+        showNotification("Import successful!", type = "message")
+        addData(result$data, result$description)
+      }
+      else {
+        showNotification("Error while importing data!", type = "error")
+      }
+    }
+    else {
+      withParallel(session, input, expr = expr.import.data(),
+                   exprsuccess = function(result) {
+                     if(!is.null(result)) {
+                       showNotification("Import successful!", type = "message")
+                       addData(result$data, result$description)
+                     }
+                     else {
+                       showNotification("Error while importing data!", type = "error")
+                     }
+                   },
+                   message = parallel.message)
     }
 
   })
@@ -649,7 +676,9 @@ genericImporterData <- function(id,
                                 exprsample, 
                                 exprgenerator,
                                 exprintegrate = NULL,
-                                xauto = NULL) {
+                                xauto = NULL,
+                                parallel = F,
+                                parallel.message = "Currently importing the data. Please wait.") {
   
   return(callModule(genericImporterData_, 
                     id, 
@@ -660,6 +689,8 @@ genericImporterData <- function(id,
                     exprsample = exprsample, 
                     exprgenerator = exprgenerator,
                     exprintegrate = exprintegrate,
-                    xauto = xauto))
+                    xauto = xauto,
+                    parallel = parallel,
+                    parallel.message = parallel.message))
   
 }

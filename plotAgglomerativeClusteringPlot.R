@@ -6,8 +6,11 @@ library(shiny)
 library(ggplot2)
 library(dendextend)
 library(ctc)
+library(gplots)
 source("widgetVisualsEditor.R")
 source("widgetDownloadablePlot.R")
+source("widgetGradientEditor.R")
+source("defaultParameters.R")
 
 plotAgglomerativeClusteringPlotUI.dist.methodsSelection <- c(
   "Euclidean" = "euclidean",
@@ -29,6 +32,35 @@ plotAgglomerativeClusteringPlotUI.hclust.methodsSelection <- c(
   "Complete linkage" = "complete"
 )
 
+plotAgglomerativeClusteringPlotUI.plotTypes <- c(
+  "Dendrogram (horizontal)" = "dendrogram.horizontal",
+  "Dendrogram (vertical)" = "dendrogram.vertical",
+  "Heatmap Pearson correlation" = "cor.pearson",
+  "Heatmap Spearman correlation" = "cor.spearman"
+)
+
+plotAgglomerativeClusteringPlotUI.dendrogramPositions <- c(
+  "Row + Column" = "both",
+  "Row only" = "row",
+  "Column only" = "column",
+  "No dendrograms" = "none"
+)
+
+plotAgglomerativeClusteringPlotUI.heatmapDensityInfo <- c(
+  "No density info" = "none",
+  "Histogram" = "histogram",
+  "Density plot" = "density"
+)
+
+plotAgglomerativeClusteringPlotUI.heatmapTrace <- c(
+  "No trace" = "none",
+  "Row + Column" = "both",
+  "Row only" = "row",
+  "Column only" = "column"
+)
+
+plotAgglomerativeClusteringPlot.defaultGradient <- importGradientSample("Gradients/HeatmapRdBu.csv", list())
+
 plotAgglomerativeClusteringPlotUI <- function(id) {
   
   ns <- NS(id)
@@ -49,13 +81,24 @@ plotAgglomerativeClusteringPlotSettingsUI <- function(id) {
   ns <- NS(id)
   
   return(bsCollapse(
+    bsCollapsePanel(recommendedDataText("Plot type"),
+                    value = "plottype",
+                    selectizeInput(ns("plottype"), "Plot type", choices = plotAgglomerativeClusteringPlotUI.plotTypes),
+                    conditionalPanel(paste(conditionalPanel.equals(ns("plottype"), "'cor.pearson'"), "||", conditionalPanel.equals(ns("plottype"), "'cor.spearman'")),
+                                     selectizeInput(ns("heatmap.dendrograms"), "Visible dendrograms", choices = plotAgglomerativeClusteringPlotUI.dendrogramPositions),
+                                     selectizeInput(ns("heatmap.density.info"), "Density info", choices = plotAgglomerativeClusteringPlotUI.heatmapDensityInfo),
+                                     selectizeInput(ns("heatmap.trace"), "Trace line", choices = plotAgglomerativeClusteringPlotUI.heatmapTrace),
+                                     colourInput(ns("heatmap.tracecol"), "Trace line color", value = "cyan", allowTransparent = T))
+                    ),
     bsCollapsePanel(recommendedDataText("Hierarchical clustering"),
                     value = "hierarchical.clustering",
                     selectizeInput(ns("method.dist"), "Distance method", choices = plotAgglomerativeClusteringPlotUI.dist.methodsSelection),
                     selectizeInput(ns("method.hclust"), "Clustering method", choices = plotAgglomerativeClusteringPlotUI.hclust.methodsSelection)),
     bsCollapsePanel(optionalDataText("Visualization"), 
                     value = "visualization",
-                    visualsEditorUI(ns("visuals"))),
+                    conditionalPanel(paste(conditionalPanel.equals(ns("plottype"), "'cor.pearson'"), "||", conditionalPanel.equals(ns("plottype"), "'cor.spearman'")), gradientEditorUI(ns("heatmap.color"))),
+                    conditionalPanel(paste(conditionalPanel.equals(ns("plottype"), "'dendrogram.horizontal'"), "||", conditionalPanel.equals(ns("plottype"), "'dendrogram.vertical'")), visualsEditorUI(ns("visuals")))
+                    ),
     bsCollapsePanel(optionalDataText("General settings"), 
                     value = "generalsettings",
                     generalPlotSettingsInput(ns("plot.settings"),
@@ -71,24 +114,41 @@ plotAgglomerativeClusteringPlot.save <- function(readcounts,
                                                  format, 
                                                  filename, 
                                                  method.distance = "euclidian", 
-                                                 method.cluster = "average"){
+                                                 method.cluster = "average",
+                                                 plottype = "dendrogram.horizontal",
+                                                 heatmap.dendrograms = "both",
+                                                 heatmap.density.info = "none",
+                                                 heatmap.trace = "none",
+                                                 heatmap.tracecol = "cyan",
+                                                 heatmap.color = plotAgglomerativeClusteringPlot.defaultGradient){
   
   validate(need(is.matrix(readcounts()) || is.SummarizedExperiment(readcounts()), "No data to plot!"),
            need(sample.visuals(), "No sample visuals available!"))
   
   plot.settings <- plotSettingsSetNA(plot.settings, 
-                                     PlotSettings(width = 640, 
-                                                  height = 480,
-                                                  dpi = 96,
+                                     PlotSettings(width = default.plot.width, 
+                                                  height = default.plot.height,
+                                                  dpi = default.plot.dpi,
                                                   scale = 1,
                                                   title = "Hierarchical Clustering",
                                                   subtitle = ""))
+  
+  if(plottype == "cor.pearson") {
+    plot.settings <- plotSettingsSetNA(plot.settings,
+                                       PlotSettings(legend.color = "Pearson correlation"))
+  }
+  else if(plottype == "cor.spearman") {
+    plot.settings <- plotSettingsSetNA(plot.settings,
+                                       PlotSettings(legend.color = "Spearman correlation"))
+  }
+  
   width <- plot.settings@width
   height <- plot.settings@height
   dpi <- plot.settings@dpi
   scale <- plot.settings@scale
   title <- plot.settings@title
   subtitle <- plot.settings@subtitle
+  legend.color <- plot.settings@legend.color
   
   palette.colors <- sample.visuals()$palette.colors
   palette.shapes <- sample.visuals()$palette.shapes
@@ -97,23 +157,87 @@ plotAgglomerativeClusteringPlot.save <- function(readcounts,
     
     X <- if(is.matrix(readcounts())) readcounts() else assay(readcounts())
     
-    dend <- t(X) %>%
-      dist(method = method.distance) %>%
-      hclust(method = method.cluster) %>%
-      as.dendrogram
-
-    dend.samples <- labels(dend)
-    dend.factors <- sample.visuals()$factors[dend.samples,]
-
-    dend <- dend %>% dendextend::set("leaves_pch", palette.shapes[as.numeric(dend.factors$shape)]) %>%
-      dendextend::set("leaves_col", palette.colors[as.numeric(dend.factors$color)])
-
-    par(mar = c(5,4,4,10))
-    dend %>% plot(main = title, sub = subtitle, horiz = T, cex = 0.6)
+    if(plottype == "dendrogram.horizontal") {
+      # Agglomerative clustering plot
+      dend <- t(X) %>%
+        dist(method = method.distance) %>%
+        hclust(method = method.cluster) %>%
+        as.dendrogram
+      
+      dend.samples <- labels(dend)
+      dend.factors <- sample.visuals()$factors[dend.samples,]
+      
+      dend <- dend %>% dendextend::set("leaves_pch", palette.shapes[as.numeric(dend.factors$shape)]) %>%
+        dendextend::set("leaves_col", palette.colors[as.numeric(dend.factors$color)])
+      
+      par(mar = c(5,4,4,10))
+      dend %>% plot(main = title, sub = subtitle, horiz = T, cex = 0.6)
+      
+      # par(mar = c(5,4,4,10))
+      # dend <- hclust(dist(t(X), method = method.distance), method = method.cluster)
+      # plot(dend, main = title, sub = subtitle)
+    }
+    else if(plottype == "dendrogram.vertical") {
+      # Agglomerative clustering plot
+      dend <- t(X) %>%
+        dist(method = method.distance) %>%
+        hclust(method = method.cluster) %>%
+        as.dendrogram
+      
+      dend.samples <- labels(dend)
+      dend.factors <- sample.visuals()$factors[dend.samples,]
+      
+      dend <- dend %>% dendextend::set("leaves_pch", palette.shapes[as.numeric(dend.factors$shape)]) %>%
+        dendextend::set("leaves_col", palette.colors[as.numeric(dend.factors$color)])
+      
+      par(mar = c(5,4,4,10))
+      dend %>% plot(main = title, sub = subtitle, horiz = F, cex = 0.6)
+      
+      # par(mar = c(5,4,4,10))
+      # dend <- hclust(dist(t(X), method = method.distance), method = method.cluster)
+      # plot(dend, main = title, sub = subtitle)
+    }
+    else {
+      # Heatmap plots
+      
+      validate(need(nrow(heatmap.color) > 1, "No valid gradient map defined!"))
+      
+      cor.method <- "pearson"
+      
+      if(plottype == "cor.kendall") {
+        cor.method <- "kendall"
+      }
+      else if(plottype == "cor.spearman") {
+        cor.method <- "spearman"
+      }
+      
+      palette <- colorRampPalette(heatmap.color[, "color"])
+      color.breaks <- c()
+      
+      for(i in 1:(nrow(heatmap.color) - 1)) {
+        color.breaks <- c(color.breaks, seq(heatmap.color[i, "value"], heatmap.color[i + 1, "value"], length.out = 100))
+      }
+      
+      color.breaks <- unique(color.breaks)
+      
+      heatmap.2(cor(X, method = cor.method),
+                hclustfun = function(x) hclust(x, method = method.cluster),
+                distfun = function(x) dist(x, method = method.distance),
+                symm = T,
+                main = title,
+                sub = subtitle,
+                margins = c(12, 9),
+                dendrogram = heatmap.dendrograms,
+                density.info = heatmap.density.info,
+                trace = heatmap.trace,
+                tracecol = heatmap.tracecol,
+                col = palette,
+                breaks = color.breaks,
+                key.xlab = legend.color)
+      
+    }
     
-    # par(mar = c(5,4,4,10))
-    # dend <- hclust(dist(t(X), method = method.distance), method = method.cluster)
-    # plot(dend, main = title, sub = subtitle)
+    
   })
   
   return(plot.settings)
@@ -149,19 +273,33 @@ plotAgglomerativeClusteringPlot_ <- function(input,
   visuals.conditions <- visualsEditorValue("visuals", reactive({colnames(conditions())}))
   visuals.sample <- reactive({ calculateSampleVisuals(colnames(readcounts()), conditions(), visuals.conditions()) })
   
+  heatmap.color <- gradientEditorValue("heatmap.color", default.gradient = plotAgglomerativeClusteringPlot.defaultGradient)
+  
   # Provide plot height that scales with sample count
   plot.settings.dynamic <- reactive({
     
     validate(need(is.matrix(readcounts()) || is.SummarizedExperiment(readcounts()), "No data to build plot settings from!"))
     
     settings <- plotSettingsSetNA(plot.settings(),
-                                  PlotSettings(dpi = 96,
+                                  PlotSettings(dpi = default.plot.dpi,
                                                scale = 1))
     
-    # Calculate the plot height based on the count of samples
-    height <- (1 + 0.4 * ncol(readcounts())) * settings@dpi * settings@scale
-    settings <- plotSettingsSetNA(plot.settings(),
-                                  PlotSettings(height = height))
+    # Calculate the plot size based on the count of samples
+    if(input$plottype == "dendrogram.horizontal") {
+      height <- (1 + 0.4 * ncol(readcounts())) * settings@dpi * settings@scale
+      settings <- plotSettingsSetNA(plot.settings(),
+                                    PlotSettings(height = height))
+    }
+    else  if(input$plottype == "dendrogram.vertical") {
+      width <- (1 + 0.4 * ncol(readcounts())) * settings@dpi * settings@scale
+      settings <- plotSettingsSetNA(plot.settings(),
+                                    PlotSettings(width = width))
+    }
+    else {
+      height <- (1 + 0.2 * ncol(readcounts())) * settings@dpi * settings@scale
+      settings <- plotSettingsSetNA(plot.settings(),
+                                    PlotSettings(height = height))
+    }
     
     return(settings)
     
@@ -188,7 +326,13 @@ plotAgglomerativeClusteringPlot_ <- function(input,
                                                                  filename,
                                                                  sample.visuals = visuals.sample,
                                                                  method.distance = input$method.dist,
-                                                                 method.cluster = input$method.hclust))
+                                                                 method.cluster = input$method.hclust,
+                                                                 plottype = input$plottype,
+                                                                 heatmap.dendrograms = input$heatmap.dendrograms,
+                                                                 heatmap.density.info = input$heatmap.density.info,
+                                                                 heatmap.trace = input$heatmap.trace,
+                                                                 heatmap.tracecol = input$heatmap.tracecol,
+                                                                 heatmap.color = heatmap.color()))
                    })
   
   # Download tree as NEWICK
@@ -223,7 +367,13 @@ plotAgglomerativeClusteringPlot_ <- function(input,
                                                     filename,
                                                     sample.visuals = visuals.sample,
                                                     method.distance = input$method.dist,
-                                                    method.cluster = input$method.hclust))
+                                                    method.cluster = input$method.hclust,
+                                                    plottype = input$plottype,
+                                                    heatmap.dendrograms = input$heatmap.dendrograms,
+                                                    heatmap.density.info = input$heatmap.density.info,
+                                                    heatmap.trace = input$heatmap.trace,
+                                                    heatmap.tracecol = input$heatmap.tracecol,
+                                                    heatmap.color = heatmap.color()))
         
       }
       
