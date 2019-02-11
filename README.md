@@ -7,7 +7,7 @@ clustering. The tool also includes features like read count
 normalization, filtering read counts by gene annotation and various
 visualization options.
 
-[PCAGO on GitLab](https://gitlab.com/rumangerst/pcago) | [PCAGO on
+[PCAGO on
 GitHub](https://github.com/rumangerst/pcago-electron) | [PCAGO-Electron
 on GitHub](https://github.com/rumangerst/pcago-electron/)
 
