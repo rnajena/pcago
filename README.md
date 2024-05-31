@@ -1,3 +1,8 @@
+:warning: The PCAGO and PCAGO-Electon repositories have been merged and are available here:
+
+https://github.com/rnajena/pcago-unified
+
+
 PCAGO
 ================
 
@@ -8,8 +13,8 @@ normalization, filtering read counts by gene annotation and various
 visualization options.
 
 [PCAGO on
-GitHub](https://github.com/rumangerst/pcago-electron) | [PCAGO-Electron
-on GitHub](https://github.com/rumangerst/pcago-electron/)
+GitHub](https://github.com/rnajena/pcago-electron) | [PCAGO-Electron
+on GitHub](https://github.com/rnajena/pcago-electron/)
 
 ## Running
 
@@ -24,7 +29,7 @@ You have following options to run PCAGO:
 ### Using the standalone application
 
 Download the PCAGO-Electron
-[here](https://github.com/rumangerst/pcago-electron). This application
+[here](https://github.com/rnajena/pcago-electron). This application
 wraps a PCAGO-server within an [Electron](https://electronjs.org/)
 application.
 
@@ -75,7 +80,7 @@ development of the application. This prevents breakage introduced by
 newer library versions. To use packrat, follow these steps:
 
 1.  Download the [package
-    sources](https://github.com/rumangerst/pcago/releases)
+    sources](https://github.com/rnajena/pcago/releases)
 2.  Unpack them into the `packrat` directory within the PCAGO project
     folder
 3.  Start R within the project directory
